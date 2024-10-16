@@ -2,7 +2,9 @@ import os
 import json
 from elasticsearch import Elasticsearch, helpers
 from sentence_transformers import SentenceTransformer
+from dotenv import load_dotenv
 
+load_dotenv()
 # Sentence Transformer 모델 초기화 (한국어 임베딩 생성 가능한 어떤 모델도 가능)
 model = SentenceTransformer("snunlp/KR-SBERT-V40K-klueNLI-augSTS")
 
@@ -82,10 +84,10 @@ def dense_retrieve(query_str, size):
 
 
 es_username = "elastic"
-es_password = "HcR3UUt0wCFGW8DX_wk-"
+es_password = os.environ.get('ELASTIC_PASSWORD')
 
 # Elasticsearch client 생성
-es = Elasticsearch(['https://localhost:9200'], basic_auth=(es_username, es_password), ca_certs="~/elasticsearch-8.8.0/config/certs/http_ca.crt")
+es = Elasticsearch(['https://localhost:9200'], basic_auth=(es_username, es_password), ca_certs="~/elasticsearch-8.15.2/config/certs/http_ca.crt")
 
 # Elasticsearch client 정보 확인
 print(es.info())
