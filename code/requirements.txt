@@ -3,3 +3,5 @@ elasticsearch==8.8.0
 openai==1.7.2
 numpy
 pandas
+pytorch-lightning
+torch
