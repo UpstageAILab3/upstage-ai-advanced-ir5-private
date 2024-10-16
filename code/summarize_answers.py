@@ -9,7 +9,7 @@ from transformers import BartForConditionalGeneration
 
 
 
-class SummerizeAnswer:
+class SummerizeAnswers:
     def __init__(self, filename) -> None:
         self.filename = filename
         self.savefilename = f'../../../new_data/new_data_{datetime.datetime.now().strftime("%Y%m%d_%H%M%S")}.jsonl'
@@ -55,7 +55,7 @@ class SummerizeAnswer:
                 new_file.write('\n')
 
 def __main__():
-    summerize = SummerizeAnswer("../../../data/documents.jsonl")
+    summerize = SummerizeAnswers("../../../data/documents.jsonl")
     summerize.save_line_to_file()
 
 if __name__ == "__main__":
