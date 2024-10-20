@@ -2,7 +2,10 @@ import os
 import json
 from elasticsearch import Elasticsearch, helpers
 from sentence_transformers import SentenceTransformer
+from dotenv import load_dotenv
+from datetime import datetime
 
+load_dotenv()
 # Sentence Transformer 모델 초기화 (한국어 임베딩 생성 가능한 어떤 모델도 가능)
 model = SentenceTransformer("snunlp/KR-SBERT-V40K-klueNLI-augSTS")
 
@@ -82,10 +85,10 @@ def dense_retrieve(query_str, size):
 
 
 es_username = "elastic"
-es_password = "Your Elasticsearch Password"
+es_password = os.environ.get('ELASTIC_PASSWORD')
 
 # Elasticsearch client 생성
-es = Elasticsearch(['https://localhost:9200'], basic_auth=(es_username, es_password), ca_certs="./elasticsearch-8.8.0/config/certs/http_ca.crt")
+es = Elasticsearch(['https://localhost:9200'], basic_auth=(es_username, es_password), ca_certs="~/elasticsearch-8.15.2/config/certs/http_ca.crt")
 
 # Elasticsearch client 정보 확인
 print(es.info())
@@ -129,7 +132,7 @@ create_es_index("test", settings, mappings)
 
 # 문서의 content 필드에 대한 임베딩 생성
 index_docs = []
-with open("../data/documents.jsonl") as f:
+with open("../../../new_data/new_data_20241018_114529.jsonl") as f:
     docs = [json.loads(line) for line in f]
 embeddings = get_embeddings_in_batches(docs)
                 
@@ -166,7 +169,7 @@ from openai import OpenAI
 import traceback
 
 # OpenAI API 키를 환경변수에 설정
-os.environ["OPENAI_API_KEY"] = "Your API Key"
+os.environ["OPENAI_API_KEY"] = os.environ.get("OPENAI_API")
 
 client = OpenAI()
 # 사용할 모델을 설정(여기서는 gpt-3.5-turbo-1106 모델 사용)
@@ -242,7 +245,8 @@ def answer_question(messages):
 
         # Baseline으로는 sparse_retrieve만 사용하여 검색 결과 추출
         search_result = sparse_retrieve(standalone_query, 3)
-
+        # search_result = dense_retrieve(standalone_query, 3)
+        
         response["standalone_query"] = standalone_query
         retrieved_context = []
         for i,rst in enumerate(search_result['hits']['hits']):
@@ -253,29 +257,51 @@ def answer_question(messages):
         content = json.dumps(retrieved_context)
         messages.append({"role": "assistant", "content": content})
         msg = [{"role": "system", "content": persona_qa}] + messages
-        try:
-            qaresult = client.chat.completions.create(
-                    model=llm_model,
-                    messages=msg,
-                    temperature=0,
-                    seed=1,
-                    timeout=30
-                )
-        except Exception as e:
-            traceback.print_exc()
-            return response
-        response["answer"] = qaresult.choices[0].message.content
+        # try: 비용절감을 위해 답벼은 생성 안함
+        #     qaresult = client.chat.completions.create(
+        #             model=llm_model,
+        #             messages=msg,
+        #             temperature=0,
+        #             seed=1,
+        #             timeout=30
+        #         )
+        # except Exception as e:
+        #     traceback.print_exc()
+        #     return response
+        # response["answer"] = qaresult.choices[0].message.content
+        response["answer"] = ""
 
     # 검색이 필요하지 않은 경우 바로 답변 생성
     else:
-        response["answer"] = result.choices[0].message.content
+        pass
+        # response["answer"] = result.choices[0].message.content
 
     return response
 
 
+
+def only_similarity_search_without_llm(message):
+    response = {"standalone_query": "", "topk": [], "references": [], "answer": ""}
+
+    # 질문 가져오기
+
+    standalone_query = message
+    search_result = dense_retrieve(standalone_query, 3)
+
+    response["standalone_query"] = standalone_query
+    retrieved_context = []
+    for i,rst in enumerate(search_result['hits']['hits']):
+        retrieved_context.append(rst["_source"]["content"])
+        response["topk"].append(rst["_source"]["docid"])
+        response["references"].append({"score": rst["_score"], "content": rst["_source"]["content"]})
+        content = json.dumps(retrieved_context, ensure_ascii=False)
+        response["answer"] = content
+
+    return response
+
 # 평가를 위한 파일을 읽어서 각 평가 데이터에 대해서 결과 추출후 파일에 저장
 def eval_rag(eval_filename, output_filename):
-    with open(eval_filename) as f, open(output_filename, "w") as of:
+    with open(eval_filename, encoding='utf-8') as f, open(output_filename, "w", encoding='utf-8') as of:
         idx = 0
         for line in f:
             j = json.loads(line)
@@ -289,5 +315,5 @@ def eval_rag(eval_filename, output_filename):
             idx += 1
 
 # 평가 데이터에 대해서 결과 생성 - 파일 포맷은 jsonl이지만 파일명은 csv 사용
-eval_rag("../data/eval.jsonl", "sample_submission.csv")
+eval_rag(f"../../../data/eval.jsonl", f"../../../eval_data/벡터_{datetime.now()}_sample_submission.csv")
 
