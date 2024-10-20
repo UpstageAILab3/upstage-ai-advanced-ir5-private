@@ -132,7 +132,7 @@ create_es_index("test", settings, mappings)
 
 # 문서의 content 필드에 대한 임베딩 생성
 index_docs = []
-with open("../../../data/documents.jsonl") as f:
+with open("../../../new_data/new_data_20241018_114529.jsonl") as f:
     docs = [json.loads(line) for line in f]
 embeddings = get_embeddings_in_batches(docs)
                 
@@ -164,116 +164,119 @@ for rst in search_result_retrieve['hits']['hits']:
     print('score:', rst['_score'], 'source:', rst['_source']["content"])
 
 
-# # 아래부터는 실제 RAG를 구현하는 코드입니다.
-# from openai import OpenAI
-# import traceback
+# 아래부터는 실제 RAG를 구현하는 코드입니다.
+from openai import OpenAI
+import traceback
 
-# # OpenAI API 키를 환경변수에 설정
-# os.environ["OPENAI_API_KEY"] = "Your API Key"
+# OpenAI API 키를 환경변수에 설정
+os.environ["OPENAI_API_KEY"] = os.environ.get("OPENAI_API")
 
-# client = OpenAI()
-# # 사용할 모델을 설정(여기서는 gpt-3.5-turbo-1106 모델 사용)
-# llm_model = "gpt-3.5-turbo-1106"
+client = OpenAI()
+# 사용할 모델을 설정(여기서는 gpt-3.5-turbo-1106 모델 사용)
+llm_model = "gpt-3.5-turbo-1106"
 
-# # RAG 구현에 필요한 Question Answering을 위한 LLM  프롬프트
-# persona_qa = """
-# ## Role: 과학 상식 전문가
+# RAG 구현에 필요한 Question Answering을 위한 LLM  프롬프트
+persona_qa = """
+## Role: 과학 상식 전문가
 
-# ## Instructions
-# - 사용자의 이전 메시지 정보 및 주어진 Reference 정보를 활용하여 간결하게 답변을 생성한다.
-# - 주어진 검색 결과 정보로 대답할 수 없는 경우는 정보가 부족해서 답을 할 수 없다고 대답한다.
-# - 한국어로 답변을 생성한다.
-# """
+## Instructions
+- 사용자의 이전 메시지 정보 및 주어진 Reference 정보를 활용하여 간결하게 답변을 생성한다.
+- 주어진 검색 결과 정보로 대답할 수 없는 경우는 정보가 부족해서 답을 할 수 없다고 대답한다.
+- 한국어로 답변을 생성한다.
+"""
 
-# # RAG 구현에 필요한 질의 분석 및 검색 이외의 일반 질의 대응을 위한 LLM 프롬프트
-# persona_function_calling = """
-# ## Role: 과학 상식 전문가
+# RAG 구현에 필요한 질의 분석 및 검색 이외의 일반 질의 대응을 위한 LLM 프롬프트
+persona_function_calling = """
+## Role: 과학 상식 전문가
 
-# ## Instruction
-# - 사용자가 대화를 통해 과학 지식에 관한 주제로 질문하면 search api를 호출할 수 있어야 한다.
-# - 과학 상식과 관련되지 않은 나머지 대화 메시지에는 적절한 대답을 생성한다.
-# """
+## Instruction
+- 사용자가 대화를 통해 과학 지식에 관한 주제로 질문하면 search api를 호출할 수 있어야 한다.
+- 과학 상식과 관련되지 않은 나머지 대화 메시지에는 적절한 대답을 생성한다.
+"""
 
-# # Function calling에 사용할 함수 정의
-# tools = [
-#     {
-#         "type": "function",
-#         "function": {
-#             "name": "search",
-#             "description": "search relevant documents",
-#             "parameters": {
-#                 "properties": {
-#                     "standalone_query": {
-#                         "type": "string",
-#                         "description": "Final query suitable for use in search from the user messages history."
-#                     }
-#                 },
-#                 "required": ["standalone_query"],
-#                 "type": "object"
-#             }
-#         }
-#     },
-# ]
+# Function calling에 사용할 함수 정의
+tools = [
+    {
+        "type": "function",
+        "function": {
+            "name": "search",
+            "description": "search relevant documents",
+            "parameters": {
+                "properties": {
+                    "standalone_query": {
+                        "type": "string",
+                        "description": "Final query suitable for use in search from the user messages history."
+                    }
+                },
+                "required": ["standalone_query"],
+                "type": "object"
+            }
+        }
+    },
+]
 
 
-# # LLM과 검색엔진을 활용한 RAG 구현
-# def answer_question(messages):
-#     # 함수 출력 초기화
-#     response = {"standalone_query": "", "topk": [], "references": [], "answer": ""}
+# LLM과 검색엔진을 활용한 RAG 구현
+def answer_question(messages):
+    # 함수 출력 초기화
+    response = {"standalone_query": "", "topk": [], "references": [], "answer": ""}
 
-#     # 질의 분석 및 검색 이외의 질의 대응을 위한 LLM 활용
-#     msg = [{"role": "system", "content": persona_function_calling}] + messages
-#     try:
-#         result = client.chat.completions.create(
-#             model=llm_model,
-#             messages=msg,
-#             tools=tools,
-#             #tool_choice={"type": "function", "function": {"name": "search"}},
-#             temperature=0,
-#             seed=1,
-#             timeout=10
-#         )
-#     except Exception as e:
-#         traceback.print_exc()
-#         return response
+    # 질의 분석 및 검색 이외의 질의 대응을 위한 LLM 활용
+    msg = [{"role": "system", "content": persona_function_calling}] + messages
+    try:
+        result = client.chat.completions.create(
+            model=llm_model,
+            messages=msg,
+            tools=tools,
+            #tool_choice={"type": "function", "function": {"name": "search"}},
+            temperature=0,
+            seed=1,
+            timeout=10
+        )
+    except Exception as e:
+        traceback.print_exc()
+        return response
 
-#     # 검색이 필요한 경우 검색 호출후 결과를 활용하여 답변 생성
-#     if result.choices[0].message.tool_calls:
-#         tool_call = result.choices[0].message.tool_calls[0]
-#         function_args = json.loads(tool_call.function.arguments)
-#         standalone_query = function_args.get("standalone_query")
+    # 검색이 필요한 경우 검색 호출후 결과를 활용하여 답변 생성
+    if result.choices[0].message.tool_calls:
+        tool_call = result.choices[0].message.tool_calls[0]
+        function_args = json.loads(tool_call.function.arguments)
+        standalone_query = function_args.get("standalone_query")
 
-#         # Baseline으로는 sparse_retrieve만 사용하여 검색 결과 추출
-#         search_result = sparse_retrieve(standalone_query, 3)
+        # Baseline으로는 sparse_retrieve만 사용하여 검색 결과 추출
+        search_result = sparse_retrieve(standalone_query, 3)
+        # search_result = dense_retrieve(standalone_query, 3)
+        
+        response["standalone_query"] = standalone_query
+        retrieved_context = []
+        for i,rst in enumerate(search_result['hits']['hits']):
+            retrieved_context.append(rst["_source"]["content"])
+            response["topk"].append(rst["_source"]["docid"])
+            response["references"].append({"score": rst["_score"], "content": rst["_source"]["content"]})
 
-#         response["standalone_query"] = standalone_query
-#         retrieved_context = []
-#         for i,rst in enumerate(search_result['hits']['hits']):
-#             retrieved_context.append(rst["_source"]["content"])
-#             response["topk"].append(rst["_source"]["docid"])
-#             response["references"].append({"score": rst["_score"], "content": rst["_source"]["content"]})
+        content = json.dumps(retrieved_context)
+        messages.append({"role": "assistant", "content": content})
+        msg = [{"role": "system", "content": persona_qa}] + messages
+        # try: 비용절감을 위해 답벼은 생성 안함
+        #     qaresult = client.chat.completions.create(
+        #             model=llm_model,
+        #             messages=msg,
+        #             temperature=0,
+        #             seed=1,
+        #             timeout=30
+        #         )
+        # except Exception as e:
+        #     traceback.print_exc()
+        #     return response
+        # response["answer"] = qaresult.choices[0].message.content
+        response["answer"] = ""
 
-#         content = json.dumps(retrieved_context)
-#         messages.append({"role": "assistant", "content": content})
-#         msg = [{"role": "system", "content": persona_qa}] + messages
-#         try:
-#             qaresult = client.chat.completions.create(
-#                     model=llm_model,
-#                     messages=msg,
-#                     temperature=0,
-#                     seed=1,
-#                     timeout=30
-#                 )
-#         except Exception as e:
-#             traceback.print_exc()
-#             return response
-#         response["answer"] = qaresult.choices[0].message.content
+    # 검색이 필요하지 않은 경우 바로 답변 생성
+    else:
+        pass
+        # response["answer"] = result.choices[0].message.content
 
-#     # 검색이 필요하지 않은 경우 바로 답변 생성
-#     else:
-#         response["answer"] = result.choices[0].message.content
-
-#     return response
+    return response
 
 
 
@@ -303,7 +306,7 @@ def eval_rag(eval_filename, output_filename):
         for line in f:
             j = json.loads(line)
             print(f'Test {idx}\nQuestion: {j["msg"]}')
-            response = only_similarity_search_without_llm(j["msg"][0]["content"])
+            response = answer_question(j["msg"])
             print(f'Answer: {response["answer"]}\n')
 
             # 대회 score 계산은 topk 정보를 사용, answer 정보는 LLM을 통한 자동평가시 활용
@@ -312,5 +315,5 @@ def eval_rag(eval_filename, output_filename):
             idx += 1
 
 # 평가 데이터에 대해서 결과 생성 - 파일 포맷은 jsonl이지만 파일명은 csv 사용
-eval_rag(f"../../../data/eval.jsonl", f"../../../eval_data/{datetime.now()}_sample_submission.csv")
+eval_rag(f"../../../data/eval.jsonl", f"../../../eval_data/벡터_{datetime.now()}_sample_submission.csv")
 
