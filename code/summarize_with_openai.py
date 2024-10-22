@@ -9,8 +9,8 @@ load_dotenv()
 class OpenAISummarization:
     def __init__(self, savefile) -> None:
         self.api_key = os.environ.get("OPENAI_API")
-        self.model_name = "gpt-3.5-turbo-1106"
-        self.instructions = "주어진 문장 추출요약 시스템"
+        self.model_name = "gpt-4o"
+        self.instructions = "한국어로 추출요약을 하는데, 기존 문장의 반정도의 길이로 요약"
         os.environ["OPENAI_API_KEY"] = self.api_key
         self.documentfile = "../../../data/documents.jsonl"
         self.savefile = savefile
@@ -20,7 +20,7 @@ class OpenAISummarization:
                 "type": "function",
                 "function":{
                     "name": "summary",
-                    "description": "extractive_summarazation",
+                    "description": "extractive_summarization",
                     "parameters": {
                         "properties":{
                             "summary": {
@@ -51,21 +51,21 @@ class OpenAISummarization:
                 model=self.model_name,
                 messages=msg,
                 tools=self.tools,
-                temperature=1,
+                temperature=0.7,
                 seed=1,
                 timeout=10
             )
+            response["summary"] = json.loads(result.choices[0].message.tool_calls[0].function.arguments)["summary"]
         except Exception as e:
             traceback.print_exc()
             return response
-
-        response["summary"] = json.loads(result.choices[0].message.tool_calls[0].function.arguments)["summary"]
-        print(response["summary"])
+        
         return response
     
     def summary_save_file(self):
 
-        with open(self.documentfile, encoding='utf-8') as doc, open(self.savefile, "w", encoding='utf-8') as sf:
+        with open(self.documentfile, encoding='utf-8') as doc, open(self.savefile, "a", encoding='utf-8') as sf:
+            idx = 0
             for line in doc:
                 line_j = json.loads(line)
                 print(f'Document {line_j["content"]}')
@@ -78,7 +78,7 @@ class OpenAISummarization:
                     "content": line_j['content'],
                     "summary": response["summary"]
                 }
-
+                print(idx)
                 sf.write(f'{json.dumps(combined_dict, ensure_ascii=False)}\n')
 
             doc.close()
@@ -87,7 +87,7 @@ class OpenAISummarization:
 
 def __main__():
 
-    openai_summary = OpenAISummarization(f"../../../new_data/openai_data_{datetime.datetime.now()}.jsonl")
+    openai_summary = OpenAISummarization(f"../../../new_data/openai_data_{datetime.datetime.now()}_gpt_4o.jsonl")
 
     openai_summary.summary_save_file()
 
