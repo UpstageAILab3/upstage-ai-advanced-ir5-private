@@ -10,7 +10,8 @@ load_dotenv()
 os.environ["OPENAI_API_KEY"] = os.environ.get("OPENAI_API")
 
 class OpenAISearch:
-    def __init__(self, search_doc, index_name="202410221914"):
+    def __init__(self, search_doc, index_name="202410240307_dim1536"):
+        # index_name = 202410221914 => 역색인용
         self.client = OpenAI()
         self.search_doc = search_doc
         es_username = "elastic"
@@ -52,7 +53,7 @@ class OpenAISearch:
                 },
                 "embeddings": {
                     "type": "dense_vector",
-                    "dims": 768,
+                    "dims": 1536,
                     "index": True,
                     "similarity": "l2_norm" 
                 }
@@ -66,8 +67,39 @@ class OpenAISearch:
         else:
             pass
             
-       
+    
+    def create_documentation(self):
+        index_name="documentation"
+        try:
+            if not self.es.indices.exists(index=index_name):
+                self.es.indices.create(index=index_name, settings=self.settings, mappings=self.mappings)
+                print(f'Index {index_name} created.')
+            print(f'Index {index_name} exists.')
+        except Exception as e:
+            print(f"Error creating index:{e}")
+        else:
+            pass
 
+    def index_documentation(self):
+        index_name="documentation"
+        with open(self.search_doc) as f:
+            documents = [json.loads(line) for line in f]
+
+        actions = [
+        {
+            "_index": index_name,
+            "_id": doc['docid'],
+            "_source": {
+                "content": doc.get('documentation_msg', ''),
+                "embedding": self.get_embedding(doc.get('documentation_msg', ''))
+            }
+        }
+        for doc in documents
+        ]
+
+
+        helpers.bulk(self.es, actions)
+        print(f'{len(documents)} documents indexed.')
     def check_connection(self):
         try:
             if self.es.ping():
@@ -87,13 +119,11 @@ class OpenAISearch:
             print(f"Error creating index:{e}")
 
     def get_embedding(self, text):
-        print(text)
         try:
             response = self.client.embeddings.create(
                 model="text-embedding-ada-002",
                 input=text
             ).data[0].embedding
-            print(response)
             return response
 
         except Exception as e:
@@ -110,7 +140,7 @@ class OpenAISearch:
             "_id": doc['docid'],
             "_source": {
                 "content": doc.get('summary_in_english', ''),
-                "embedding": self.get_embedding(doc.get('summary_in_english', ''))
+                "embedding": self.get_embedding(doc["summary_in_english"])
             }
         }
         for doc in documents
@@ -119,6 +149,31 @@ class OpenAISearch:
 
         helpers.bulk(self.es, actions)
         print(f'{len(documents)} documents indexed.')
+
+    def dense_retrieve(self, query_str, size=5):
+        query_embedding = self.get_embedding(query_str)
+
+        knn = {
+            "field": "embeddings",
+            "query_vector": query_embedding,
+            "k": 10,
+            "num_candidates": 100
+        }
+
+        response = self.es.search(index=self.index_name, knn=knn, fields=["content"], size=size)
+
+        # results = []
+
+        print(response)
+
+        # for hit in response['hits']['hits']:
+        #     results.append({
+        #         'id': hit['_id'],
+        #         'score': hit['_score'],
+        #         'content': hit['_source']['content']
+        #     })
+
+        # return results
 
     def sparse_retrieve(self, query_str, size=5):
         query = {
@@ -212,7 +267,6 @@ class EvalAnswer:
             )
 
             response = result.choices[0].message.tool_calls[0].function.arguments
-            print(response)
         except Exception as e:
             traceback.print_exc()
         return response
@@ -307,7 +361,16 @@ class EvalAnswer:
 if __name__ == "__main__":
 
     eval_answer = EvalAnswer(eval_filename="../../../generated_eval_data/eval_data_hyde_english_2024-10-22 14:06:25.877078.jsonl", output_filename=f"../../../eval_data/index-202410221914_역색인_openai-embedding_english_{datetime.datetime.now()}.csv")
-    eval_answer.eval_rag()
+    # eval_answer.eval_rag()
 
+    openaisearch = OpenAISearch(search_doc="../../../new_data/translated_document.jsonl")
+    openaisearch.create_index()
+    openaisearch.index_data()
+    # try:
+
+    #     openaisearch.create_documentation()
+    #     openaisearch.index_documentation()
+    # except Exception as e:
+    #     print(f"error: {e}")
     # result = eval_answer.answer_question([{"role": "user", "content": "wow you are cool"}])
     # print(result)

@@ -4,6 +4,8 @@ from dotenv import load_dotenv
 import json
 import traceback
 import datetime
+from pytz import timezone
+
 
 load_dotenv()
 os.environ["OPENAI_API_KEY"] = os.environ.get("OPENAI_API")
@@ -17,7 +19,7 @@ class HYde:
         self.client = OpenAI()
     
         self.model_name = "gpt-4o"
-        self.instructions = "마지막에 주어진 영어질문 문장을 영어로 문서화할때 100 단어정도로만 문서화해줘"
+        self.instructions = "영어질문 장을 영어로 50단어 정도로만 문서화해줘"
         self.client = OpenAI()
         self.tools = [
             {
@@ -92,12 +94,36 @@ class HYde:
             doc.close()
             sf.close()
 
+    def concat(self, a_doc, b_doc):
+        try:
+            with open(a_doc, encoding='utf-8') as a, open(b_doc, encoding='utf-8') as b, open(self.destination, "w", encoding='utf-8') as out_f:
+                for idx, (line_a, line_b) in enumerate(zip(a, b), start=1):
+
+                    try:
+                        json_a = json.loads(line_a)
+                        json_b = json.loads(line_b)
+                        concatenated_json = {**json_a, "documentation_msg": json_b["documentation_msg"]}
+                        out_f.write(json.dumps(concatenated_json,  ensure_ascii=False) + "\n")
+
+
+                    except json.JSONDecodeError as json_err:
+                        print(f"JSON decode error at line {idx}: {json_err}")
+                    except Exception as e:
+                        print(f"Error at line {idx}: {e}")
+
+
+        except FileNotFoundError as fnf_error:
+            print(f"File not found: {fnf_error}")
+        except Exception as e:
+            print(f"Unexpected error: {e}") 
+
 
         
     # def make_hyde(self):
     #     with open(self.depart_location, encoding="utf-8") as f , open(self.destination, "w", encoding="utf-8") as sf:
 
 if __name__ == "__main__":
+    timestamp = datetime.datetime.now(timezone('Asia/Seoul')).strftime('%Y%m%d_%H%M%S')
 
-    hyde = HYde("../../../data/translated_eval_origin.jsonl", f"../../../generated_eval_data/eval_data_hyde_english_{datetime.datetime.now()}.jsonl")
-    hyde.save_file()
+    hyde = HYde("../../../data/translated_eval_origin.jsonl", f"../../../generated_eval_data/eval_data_hyde_english_{timestamp}.jsonl")
+    hyde.concat("../../../data/translated_eval_origin_with_isscience_standalone_query_20241024_124841.jsonl", "../../../generated_eval_data/eval_data_hyde_english_2024-10-22 14:06:25.877078.jsonl")
