@@ -75,8 +75,8 @@ class ElasticSearchEmbedding:
             for i, hit in enumerate(response['hits']['hits']):
                 
                 _id = hit["_id"]
-                content = hit["_source"].get("content", "N/A")  # 'content' 필드가 없을 경우 기본값 설정
-                embedding = hit["_source"].get("embedding", "N/A")  # 'embedding' 필드도 예시로 추가
+                content = hit["_source"].get("content", "N/A")
+                embedding = hit["_source"].get("embedding", "N/A") 
                 embeddings = hit["_source"].get("embeddings", "N/A") 
 
                 writer.writerow([_id, content, embedding, embeddings])

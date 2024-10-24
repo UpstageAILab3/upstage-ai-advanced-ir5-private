@@ -149,7 +149,7 @@ class OpenAISearch:
 
     
 class EvalAnswer:
-    def __init__(self, eval_filename, output_filename ):
+    def __init__(self, eval_filename="", output_filename="" ):
         self.eval_filename = eval_filename
         self.output_filename = output_filename
         # self.client = OpenAI()
@@ -169,6 +169,7 @@ class EvalAnswer:
 
         ## Instruction
         - 사용자가 대화를 통해 과학 지식에 관한 주제로 질문하면 search api를 호출할 수 있어야 한다.
+        - 대화 내용이 과학 지식에 대한 주제가 아니면 search api를 호출하지 않는다.
         - 과학 상식과 관련되지 않은 나머지 대화 메시지에는 적절한 대답을 생성한다.
         """
         self.tools = [
@@ -188,7 +189,7 @@ class EvalAnswer:
                             #     "description": "if query is a science question, return True, else False"
                             # }
                         },
-                        "required": ["standalone_query", "is_science_question"],
+                        "required": ["standalone_query"],
                         "type": "object"
                     }
                 }
@@ -197,38 +198,38 @@ class EvalAnswer:
     def answer_question(self, messages):
         response = {"standalone_query": "", "topk": [], "references": [], "answer": ""}
 
-        # msg = [{"role": "system", "content": self.persona_function_calling}] + messages
-        # try:
-        #     result = self.client.chat.completions.create(
-        #         model=self.llm_model,
-        #         messages=msg,
-        #         tools=self.tools,
-        #         tool_choice={"type": "function", "function": {"name": "search"}},
-        #         temperature=0,
-        #         seed=1,
-        #         timeout=10
-        #     )
-        # except Exception as e:
-        #     traceback.print_exc()
-        #     return response
+        msg = [{"role": "system", "content": self.persona_function_calling}] + messages
+        try:
+            result = self.client.chat.completions.create(
+                model=self.llm_model,
+                messages=msg,
+                tools=self.tools,
+                tool_choice={"type": "function", "function": {"name": "search"}},
+                temperature=0,
+                seed=1,
+                timeout=10
+            )
+        except Exception as e:
+            traceback.print_exc()
+            return response
         
         # is_science = bool(json.loads(result.choices[0].message.tool_calls[0].function.arguments)["is_science_question"])
         # if is_science:
-        # if result.choices[0].message.tool_calls:
-        #     print("called:", result.choices[0].message.tool_calls)
-        #     tool_call = result.choices[0].message.tool_calls[0]
-        #     function_args = json.loads(tool_call.function.arguments)
-        #     standalone_query = function_args.get("standalone_query")
+        if result.choices[0].message.tool_calls:
+            print("called:", result.choices[0].message.tool_calls)
+            tool_call = result.choices[0].message.tool_calls[0]
+            function_args = json.loads(tool_call.function.arguments)
+            standalone_query = function_args.get("standalone_query")
     
-        #     search_result = self.openAISearch.sparse_retrieve(standalone_query, 5)
+            search_result = self.openAISearch.sparse_retrieve(standalone_query, 5)
 
-        #     response["standalone_query"] = standalone_query
-        #     retrieved_context = []
-        #     for i, rst in enumerate(search_result):
-        #         retrieved_context.append(rst["content"])
-        #         response["topk"].append(rst["id"])
-        #         response["references"].append({"score": rst["score"], "content": rst["content"]})
-        #     print(response)
+            response["standalone_query"] = standalone_query
+            retrieved_context = []
+            for i, rst in enumerate(search_result):
+                retrieved_context.append(rst["content"])
+                response["topk"].append(rst["id"])
+                response["references"].append({"score": rst["score"], "content": rst["content"]})
+            print(response)
 
         search_result = self.openAISearch.sparse_retrieve(messages, 3)
         response["standalone_query"] = messages
