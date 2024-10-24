@@ -8,6 +8,7 @@ import datetime
 
 load_dotenv()
 os.environ["OPENAI_API_KEY"] = os.environ.get("OPENAI_API")
+
 class OpenAISearch:
     def __init__(self, search_doc, index_name="202410221914"):
         self.client = OpenAI()
@@ -152,15 +153,16 @@ class EvalAnswer:
     def __init__(self, eval_filename="", output_filename="" ):
         self.eval_filename = eval_filename
         self.output_filename = output_filename
-        # self.client = OpenAI()
-        self.openAISearch = OpenAISearch(search_doc="../../../new_data/translated_document.jsonl", )
+        self.client = OpenAI()
+        # self.openAISearch = OpenAISearch(search_doc="../../../new_data/translated_document.jsonl", )
         # self.llm_model = "gpt-3.5-turbo-1106"
-        # self.llm_model = "gpt-4o"
+        self.classification_llm_model ="gpt-3.5-turbo-1106" 
+        # "gpt-4o"
         self.persona_qa = """
         ## Role: 과학 상식 전문가
 
         ## Instructions
-        - 사용자의 이전 메시지 정보 및 주어진 Reference 정보를 활용하여 간결하게 답변을 생성한다.
+        - 질문과 주어진 Reference 정보를 활용하여 간결하게 답변을 생성한다.
         - 주어진 검색 결과 정보로 대답할 수 없는 경우는 정보가 부족해서 답을 할 수 없다고 대답한다.
         - 한국어로 답변을 생성한다.
         """
@@ -184,17 +186,57 @@ class EvalAnswer:
                                 "type": "string",
                                 "description": "Final query suitable for use in search from the user messages history."
                             },
-                            # "is_science_question":{
-                            #     "type": "boolean",
-                            #     "description": "if query is a science question, return True, else False"
-                            # }
+                            "is_science_question":{
+                                "type": "boolean",
+                                "description": "if query is a science question, return True, else False"
+                            }
                         },
-                        "required": ["standalone_query"],
+                        "required": ["standalone_query", "is_science_question"],
                         "type": "object"
                     }
                 }
             },
         ]
+
+    def find_out_its_question(self, messages):
+        msg = [{"role": "system", "content": self.persona_function_calling}] + messages
+        try:
+            result = self.client.chat.completions.create(
+                model=self.classification_llm_model,
+                messages=msg,
+                tools=self.tools,
+                tool_choice={"type": "function", "function": {"name": "search"}},
+                temperature=0,
+                seed=1,
+                timeout=10
+            )
+
+            response = result.choices[0].message.tool_calls[0].function.arguments
+            print(response)
+        except Exception as e:
+            traceback.print_exc()
+        return response
+    
+    def answer_science_question(self, refrences):
+        response = {"answer":""}
+        message = [{"role": "assistant", "content": refrences}]
+
+        msg = [{"role": "system", "content": self.persona_qa}] + message
+
+        try: 
+            qaresult = self.client.chat.completions.create(
+                    model=self.llm_model,
+                    messages=msg,
+                    temperature=0,
+                    seed=1,
+                    timeout=30
+                )
+        except Exception as e:
+            traceback.print_exc()
+            return response
+        
+        response["answer"] = qaresult.choices[0].message.content
+
     def answer_question(self, messages):
         response = {"standalone_query": "", "topk": [], "references": [], "answer": ""}
 
