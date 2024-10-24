@@ -1,8 +1,9 @@
 from openai import OpenAI
 import os
+
 # Upstage API 설정
 solar_client = OpenAI(
-    api_key= os.getenv('UPSTAGE_API_KEY'),  # 여기에 본인의 Upstage API 키를 넣으세요
+    api_key=os.getenv('UPSTAGE_API_KEY'),  # 여기에 본인의 Upstage API 키를 넣으세요
     base_url="https://api.upstage.ai/v1/solar"
 )
 

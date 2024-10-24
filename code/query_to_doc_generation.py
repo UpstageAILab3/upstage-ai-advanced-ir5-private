@@ -1,5 +1,6 @@
 import openai
 import json
+import os
 
 # GPT API 키 설정
 client = openai.OpenAI(api_key= os.getenv('OPENAI_API_KEY'))

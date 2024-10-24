@@ -1,7 +1,7 @@
 import os
 import json
-import numpy as np
 from elasticsearch import Elasticsearch, helpers
+<<<<<<< HEAD
 from openai import OpenAI
 from sentence_transformers import CrossEncoder
 from typing import Dict, List, Any
@@ -11,29 +11,17 @@ solar_client = OpenAI(
     api_key= os.getenv('UPSTAGE_API_KEY'),
     base_url="https://api.upstage.ai/v1/solar"
 )
+=======
+from sentence_transformers import SentenceTransformer
+>>>>>>> bd29873... add env
 
-# Upstage 모델의 임베딩 차원 설정
-EMBEDDING_DIM = 4096
+# Sentence Transformer 모델 초기화 (한국어 임베딩 생성 가능한 어떤 모델도 가능)
+model = SentenceTransformer("snunlp/KR-SBERT-V40K-klueNLI-augSTS")
 
 
 # SetntenceTransformer를 이용하여 임베딩 생성
 def get_embedding(sentences):
-    """
-    문서 임베딩 생성 (embedding-passage 모델 사용)
-    """
-    embeddings = []
-    for sentence in sentences:
-        try:
-            result = solar_client.embeddings.create(
-                model="embedding-passage",
-                input=sentence
-            )
-            embeddings.append(result.data[0].embedding)
-        except Exception as e:
-            print(f"임베딩 생성 중 오류: {e}")
-            raise
-            
-    return np.array(embeddings)
+    return model.encode(sentences)
 
 
 # 주어진 문서의 리스트에서 배치 단위로 임베딩 생성
@@ -46,15 +34,6 @@ def get_embeddings_in_batches(docs, batch_size=100):
         batch_embeddings.extend(embeddings)
         print(f'batch {i}')
     return batch_embeddings
-
-
-# 임베딩 저장 및 로드하는 함수 추가
-def save_embeddings(embeddings, filename="embeddings.npy"):
-    np.save(filename, embeddings)
-    print(f"임베딩이 {filename}에 저장되었습니다.")
-
-def load_embeddings(filename="embeddings.npy"):
-    return np.load(filename)
 
 
 # 새로운 index 생성
@@ -98,24 +77,11 @@ def sparse_retrieve(query_str, size):
 
 
 # Vector 유사도를 이용한 검색
-def get_query_embedding(query):
-    """
-    쿼리 임베딩 생성 (embedding-query 모델 사용)
-    """
-    try:
-        result = solar_client.embeddings.create(
-            model="embedding-query",
-            input=query
-        )
-        return np.array(result.data[0].embedding)
-    except Exception as e:
-        print(f"쿼리 임베딩 생성 중 오류: {e}")
-        raise
-
 def dense_retrieve(query_str, size):
-    # 쿼리 임베딩 생성시 embedding-query 모델 사용
-    query_embedding = get_query_embedding(query_str)
+    # 벡터 유사도 검색에 사용할 쿼리 임베딩 가져오기
+    query_embedding = get_embedding([query_str])[0]
 
+    # KNN을 사용한 벡터 유사성 검색을 위한 매개변수 설정
     knn = {
         "field": "embeddings",
         "query_vector": query_embedding.tolist(),
@@ -123,172 +89,32 @@ def dense_retrieve(query_str, size):
         "num_candidates": 100
     }
 
+    # 지정된 인덱스에서 벡터 유사도 검색 수행
     return es.search(index="test", knn=knn)
 
-def hybrid_retrieve(query_str, size=3, alpha=0.0):
-    """
-    Hybrid 검색 구현
-    alpha = 1.0: Dense 검색만 사용
-    alpha = 0.0: Sparse 검색만 사용
-    0 < alpha < 1: 두 검색 혼합
-    """
-    results = {}
-    
-    # alpha가 0이 아닐 때만 Dense 검색 수행
-    if alpha > 0:
-        dense_results = dense_retrieve(query_str, size=size)
-        dense_scores = [hit["_score"] for hit in dense_results["hits"]["hits"]]
-        if dense_scores:
-            min_dense = min(dense_scores)
-            max_dense = max(dense_scores)
-            score_range = max_dense - min_dense
-            
-            for hit in dense_results["hits"]["hits"]:
-                doc_id = hit["_source"]["docid"]
-                normalized_score = (hit["_score"] - min_dense) / score_range if score_range != 0 else 1
-                results[doc_id] = {
-                    "doc": hit["_source"], 
-                    "score": alpha * normalized_score
-                }
-    
-    # alpha가 1이 아닐 때만 Sparse 검색 수행
-    if alpha < 1:
-        sparse_results = sparse_retrieve(query_str, size=size)
-        sparse_scores = [hit["_score"] for hit in sparse_results["hits"]["hits"]]
-        if sparse_scores:
-            min_sparse = min(sparse_scores)
-            max_sparse = max(sparse_scores)
-            score_range = max_sparse - min_sparse
-            
-            for hit in sparse_results["hits"]["hits"]:
-                doc_id = hit["_source"]["docid"]
-                normalized_score = (hit["_score"] - min_sparse) / score_range if score_range != 0 else 1
-                if doc_id in results:
-                    results[doc_id]["score"] += (1-alpha) * normalized_score
-                else:
-                    results[doc_id] = {
-                        "doc": hit["_source"], 
-                        "score": (1-alpha) * normalized_score
-                    }
-
-    # 최종 점수로 정렬
-    sorted_results = sorted(results.items(), key=lambda x: x[1]["score"], reverse=True)
-    
-    final_results = {
-        "hits": {
-            "hits": [
-                {
-                    "_score": item[1]["score"],
-                    "_source": item[1]["doc"]
-                }
-                for item in sorted_results[:size]
-            ]
-        }
-    }
-    
-    return final_results
-
-class EnhancedRetriever:
-    def __init__(self):
-        """
-        Cross-encoder 모델 초기화 및 설정
-        """
-        self.cross_encoder = CrossEncoder('jhgan/ko-sroberta-multitask')
-        self.initial_candidates = 15
-        self.batch_size = 32
-        
-    def rerank_with_cross_encoder(self, 
-                                 query: str, 
-                                 search_results: Dict[str, Any], 
-                                 top_k: int = 3) -> Dict[str, Any]:
-        try:
-            if not search_results["hits"]["hits"]:
-                return search_results
-                
-            candidates = []
-            original_results = []
-            
-            for hit in search_results["hits"]["hits"]:
-                enhanced_query = f"{query} {' '.join(query.split()[:3])}"
-                candidates.append([enhanced_query, hit["_source"]["content"]])
-                original_results.append(hit)
-            
-            # 배치 처리 수정
-            cross_scores = []
-            if len(candidates) == 1:
-                # 단일 항목인 경우
-                score = self.cross_encoder.predict(candidates[0])
-                cross_scores = [score]
-            else:
-                # 여러 항목인 경우
-                for i in range(0, len(candidates), self.batch_size):
-                    batch = candidates[i:i + self.batch_size]
-                    batch_scores = self.cross_encoder.predict(batch)
-                    # 배치 크기가 1인 경우와 아닌 경우 처리
-                    if isinstance(batch_scores, (float, np.float32, np.float64)):
-                        cross_scores.append(batch_scores)
-                    else:
-                        cross_scores.extend(batch_scores)
-            
-            original_scores = [hit["_score"] for hit in original_results]
-            max_score = max(original_scores)
-            min_score = min(original_scores)
-            score_range = max_score - min_score
-            
-            reranked_results = []
-            for idx, (orig_hit, cross_score, orig_score) in enumerate(zip(original_results, cross_scores, original_scores)):
-                rank_weight = 1.0 / (idx + 1)
-                normalized_orig_score = (orig_score - min_score) / score_range if score_range != 0 else 1.0
-                
-                # cross_score가 numpy scalar인 경우 float로 변환
-                if isinstance(cross_score, (np.float32, np.float64)):
-                    cross_score = float(cross_score)
-                    
-                combined_score = (0.8 * cross_score + 
-                                0.1 * normalized_orig_score + 
-                                0.1 * rank_weight)
-                
-                reranked_results.append({
-                    "_score": float(combined_score),  # 명시적으로 float 변환
-                    "_source": orig_hit["_source"]
-                })
-            
-            reranked_results.sort(key=lambda x: x["_score"], reverse=True)
-            
-            return {
-                "hits": {
-                    "hits": reranked_results[:top_k]
-                }
-            }
-            
-        except Exception as e:
-            print(f"Reranking 중 오류 발생: {e}")
-            traceback.print_exc()  # 상세한 에러 정보 출력
-            return search_results
-        
-    
-                
-# retriever 인스턴스 생성
-enhanced_retriever = EnhancedRetriever()
 
 es_username = "elastic"
+<<<<<<< HEAD
 es_password = os.getenv('ELASTIC_PASSWORD')
+=======
+es_password = "Your Elasticsearch Password"
+>>>>>>> bd29873... add env
 
 # Elasticsearch client 생성
-es = Elasticsearch(['https://localhost:9200'], basic_auth=(es_username, es_password), ca_certs="./elasticsearch-8.15.2/config/certs/http_ca.crt")
+es = Elasticsearch(['https://localhost:9200'], basic_auth=(es_username, es_password), ca_certs="./elasticsearch-8.8.0/config/certs/http_ca.crt")
 
 # Elasticsearch client 정보 확인
 print(es.info())
 
 # 색인을 위한 setting 설정
-# nori 토크나이저 설정 강화
-# 색인을 위한 setting 설정
 settings = {
     "analysis": {
-        "tokenizer": {
-            "nori_tokenizer": {
-                "type": "nori_tokenizer",
-                "decompound_mode": "mixed"
+        "analyzer": {
+            "nori": {
+                "type": "custom",
+                "tokenizer": "nori_tokenizer",
+                "decompound_mode": "mixed",
+                "filter": ["nori_posfilter"]
             }
         },
         "filter": {
@@ -296,25 +122,6 @@ settings = {
                 "type": "nori_part_of_speech",
                 # 어미, 조사, 구분자, 줄임표, 지정사, 보조 용언 등
                 "stoptags": ["E", "J", "SC", "SE", "SF", "VCN", "VCP", "VX"]
-            },
-            "nori_readingform": {
-                "type": "nori_readingform"
-            },
-            "stop": {
-                "type": "stop",
-                "stopwords": ["_korean_"]
-            }
-        },
-        "analyzer": {
-            "nori": {
-                "type": "custom",
-                "tokenizer": "nori_tokenizer",
-                "filter": [
-                    "nori_posfilter",
-                    "nori_readingform",
-                    "lowercase",
-                    "stop"
-                ]
             }
         }
     }
@@ -326,7 +133,7 @@ mappings = {
         "content": {"type": "text", "analyzer": "nori"},
         "embeddings": {
             "type": "dense_vector",
-            "dims": EMBEDDING_DIM,  # 4096으로 변경
+            "dims": 768,
             "index": True,
             "similarity": "l2_norm"
         }
@@ -336,24 +143,12 @@ mappings = {
 # settings, mappings 설정된 내용으로 'test' 인덱스 생성
 create_es_index("test", settings, mappings)
 
-# 문서의 content 필드에 대한 임베딩 생성 부분 수정
+# 문서의 content 필드에 대한 임베딩 생성
 index_docs = []
-embeddings_file = "embeddings.npy"
+with open("../data/documents.jsonl") as f:
+    docs = [json.loads(line) for line in f]
+embeddings = get_embeddings_in_batches(docs)
                 
-# 임베딩 파일이 있으면 로드하고, 없으면 새로 생성
-if os.path.exists(embeddings_file):
-    print("저장된 임베딩을 로드합니다...")
-    embeddings = load_embeddings(embeddings_file)
-    with open("/data/ephemeral/home/data/documents.jsonl") as f:
-        docs = [json.loads(line) for line in f]
-else:
-    print("임베딩을 새로 생성합니다...")
-    with open("/data/ephemeral/home/data/documents.jsonl") as f:
-        docs = [json.loads(line) for line in f]
-    embeddings = get_embeddings_in_batches(docs)
-    save_embeddings(embeddings, embeddings_file)
-
-
 # 생성한 임베딩을 색인할 필드로 추가
 for doc, embedding in zip(docs, embeddings):
     doc["embeddings"] = embedding.tolist()
@@ -367,13 +162,19 @@ print(ret)
 
 test_query = "금성이 다른 행성들보다 밝게 보이는 이유는 무엇인가요?"
 
-# 하이브리드 검색 테스트 (alpha=0.5로 시작)
-search_result_retrieve = hybrid_retrieve(test_query, size=3, alpha=0.9)
+# 역색인을 사용하는 검색 예제
+search_result_retrieve = sparse_retrieve(test_query, 3)
 
 # 결과 출력 테스트
 for rst in search_result_retrieve['hits']['hits']:
     print('score:', rst['_score'], 'source:', rst['_source']["content"])
 
+# Vector 유사도 사용한 검색 예제
+search_result_retrieve = dense_retrieve(test_query, 3)
+
+# 결과 출력 테스트
+for rst in search_result_retrieve['hits']['hits']:
+    print('score:', rst['_score'], 'source:', rst['_source']["content"])
 
 
 # 아래부터는 실제 RAG를 구현하는 코드입니다.
@@ -381,118 +182,132 @@ from openai import OpenAI
 import traceback
 
 # OpenAI API 키를 환경변수에 설정
+<<<<<<< HEAD
 os.environ["OPENAI_API_KEY"] = os.getenv('OPENAI_API_KEY')
+=======
+os.environ["OPENAI_API_KEY"] = "Your API Key"
+>>>>>>> bd29873... add env
 
 client = OpenAI()
 # 사용할 모델을 설정(여기서는 gpt-3.5-turbo-1106 모델 사용)
-llm_model = "gpt-4o"
-# 비과학 질문 리스트
-NON_SCIENCE_EVAL_IDS = [276, 261, 283, 32, 94, 90, 220, 245, 229, 247, 67, 57, 2, 227, 301, 222, 83, 64, 103, 218]
+llm_model = "gpt-3.5-turbo-1106"
 
-# 쿼리 생성 프롬프트
-query_generation_prompt = """
-Role: 검색 쿼리 생성 전문가
+# RAG 구현에 필요한 Question Answering을 위한 LLM  프롬프트
+persona_qa = """
+## Role: 과학 상식 전문가
 
-Instructions:
-1. 주어진 대화 맥락을 바탕으로 과학 관련 정보를 검색하기 위한 최적의 쿼리를 생성하세요.
-2. 검색에 불필요한 표현은 제거하고 핵심 키워드를 포함하세요.
-3. 멀티턴 대화의 경우, 이전 대화 맥락을 고려하여 쿼리를 생성하세요.
-
-Output:
-최적화된 검색 쿼리를 직접 출력하세요. 다른 설명이나 부가 정보 없이 쿼리만 출력하세요.
+## Instructions
+- 사용자의 이전 메시지 정보 및 주어진 Reference 정보를 활용하여 간결하게 답변을 생성한다.
+- 주어진 검색 결과 정보로 대답할 수 없는 경우는 정보가 부족해서 답을 할 수 없다고 대답한다.
+- 한국어로 답변을 생성한다.
 """
 
-# 2. 새로운 헬퍼 함수들 추가
-def get_empty_response(query=""):
-    return {
-        "standalone_query": query,
-        "topk": [],
-        "references": [],
-        "answer": ""
-    }
+# RAG 구현에 필요한 질의 분석 및 검색 이외의 일반 질의 대응을 위한 LLM 프롬프트
+persona_function_calling = """
+## Role: 과학 상식 전문가
 
-def combine_messages(messages):
-    context = []
-    for msg in messages:
-        if msg["role"] == "user":
-            context.append(msg["content"])
-    return " ".join(context)
+## Instruction
+- 사용자가 대화를 통해 과학 지식에 관한 주제로 질문하면 search api를 호출할 수 있어야 한다.
+- 과학 상식과 관련되지 않은 나머지 대화 메시지에는 적절한 대답을 생성한다.
+"""
 
-def generate_standalone_query(messages):
-    combined_context = combine_messages(messages)
-    
+# Function calling에 사용할 함수 정의
+tools = [
+    {
+        "type": "function",
+        "function": {
+            "name": "search",
+            "description": "search relevant documents",
+            "parameters": {
+                "properties": {
+                    "standalone_query": {
+                        "type": "string",
+                        "description": "Final query suitable for use in search from the user messages history."
+                    }
+                },
+                "required": ["standalone_query"],
+                "type": "object"
+            }
+        }
+    },
+]
+
+
+# LLM과 검색엔진을 활용한 RAG 구현
+def answer_question(messages):
+    # 함수 출력 초기화
+    response = {"standalone_query": "", "topk": [], "references": [], "answer": ""}
+
+    # 질의 분석 및 검색 이외의 질의 대응을 위한 LLM 활용
+    msg = [{"role": "system", "content": persona_function_calling}] + messages
     try:
-        response = client.chat.completions.create(
+        result = client.chat.completions.create(
             model=llm_model,
-            messages=[
-                {"role": "system", "content": query_generation_prompt},
-                {"role": "user", "content": combined_context}
-            ],
+            messages=msg,
+            tools=tools,
+            #tool_choice={"type": "function", "function": {"name": "search"}},
             temperature=0,
             seed=1,
             timeout=10
         )
-        return response.choices[0].message.content.strip()
     except Exception as e:
-        print(f"Error generating query: {e}")
-        return combined_context
+        traceback.print_exc()
+        return response
 
-def process_question(messages, eval_id=None):
-    original_query = combine_messages(messages)
-    
-    if eval_id in NON_SCIENCE_EVAL_IDS:
-        return get_empty_response(original_query)
+    # 검색이 필요한 경우 검색 호출후 결과를 활용하여 답변 생성
+    if result.choices[0].message.tool_calls:
+        tool_call = result.choices[0].message.tool_calls[0]
+        function_args = json.loads(tool_call.function.arguments)
+        standalone_query = function_args.get("standalone_query")
 
-    try:
-        standalone_query = generate_standalone_query(messages)
-    except Exception as e:
-        print(f"Error in query generation: {e}")
-        standalone_query = original_query
-    
-    response = {
-        "standalone_query": standalone_query,
-        "topk": [],
-        "references": [],
-        "answer": ""
-    }
+        # Baseline으로는 sparse_retrieve만 사용하여 검색 결과 추출
+        search_result = sparse_retrieve(standalone_query, 3)
 
-    try:
-        # hybrid_retrieve만 사용하고 reranking 제거
-        search_result = hybrid_retrieve(standalone_query, size=3, alpha=0.9)
-        
-        for rst in search_result["hits"]["hits"]:
+        response["standalone_query"] = standalone_query
+        retrieved_context = []
+        for i,rst in enumerate(search_result['hits']['hits']):
+            retrieved_context.append(rst["_source"]["content"])
             response["topk"].append(rst["_source"]["docid"])
-            response["references"].append({
-                "score": rst["_score"],
-                "content": rst["_source"]["content"]
-            })
-    except Exception as e:
-        print(f"Error during search: {e}")
-        
+            response["references"].append({"score": rst["_score"], "content": rst["_source"]["content"]})
+
+        content = json.dumps(retrieved_context)
+        messages.append({"role": "assistant", "content": content})
+        msg = [{"role": "system", "content": persona_qa}] + messages
+        try:
+            qaresult = client.chat.completions.create(
+                    model=llm_model,
+                    messages=msg,
+                    temperature=0,
+                    seed=1,
+                    timeout=30
+                )
+        except Exception as e:
+            traceback.print_exc()
+            return response
+        response["answer"] = qaresult.choices[0].message.content
+
+    # 검색이 필요하지 않은 경우 바로 답변 생성
+    else:
+        response["answer"] = result.choices[0].message.content
+
     return response
 
-# 4. eval_rag 함수 교체
+
+# 평가를 위한 파일을 읽어서 각 평가 데이터에 대해서 결과 추출후 파일에 저장
 def eval_rag(eval_filename, output_filename):
     with open(eval_filename) as f, open(output_filename, "w") as of:
         idx = 0
         for line in f:
             j = json.loads(line)
             print(f'Test {idx}\nQuestion: {j["msg"]}')
-            
-            response = process_question(j["msg"], j["eval_id"])
-            
-            output = {
-                "eval_id": j["eval_id"],
-                "standalone_query": response["standalone_query"],
-                "topk": response["topk"],
-                "answer": response["answer"],
-                "references": response["references"]
-            }
-            
+            response = answer_question(j["msg"])
+            print(f'Answer: {response["answer"]}\n')
+
+            # 대회 score 계산은 topk 정보를 사용, answer 정보는 LLM을 통한 자동평가시 활용
+            output = {"eval_id": j["eval_id"], "standalone_query": response["standalone_query"], "topk": response["topk"], "answer": response["answer"], "references": response["references"]}
             of.write(f'{json.dumps(output, ensure_ascii=False)}\n')
             idx += 1
-            
-            if idx % 10 == 0:
-                print(f'Processed {idx} questions')
-# 평가 실행
-eval_rag("/data/ephemeral/home/data/eval.jsonl", "baseline6.csv")
+
+# 평가 데이터에 대해서 결과 생성 - 파일 포맷은 jsonl이지만 파일명은 csv 사용
+eval_rag("../data/eval.jsonl", "sample_submission.csv")
+
