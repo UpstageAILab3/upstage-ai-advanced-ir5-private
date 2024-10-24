@@ -8,7 +8,7 @@ import traceback
 # Upstage API 설정
 # OpenAI 클라이언트 설정 수정
 solar_client = OpenAI(
-    api_key="up_mi26bpsVrgHKS3IBZIh6AoV5C0Sr5",  # Upstage API 키
+    api_key= os.getenv('UPSTAGE_API_KEY'),  # Upstage API 키
     base_url="https://api.upstage.ai/v1/solar"
 )
 
@@ -212,7 +212,7 @@ def dense_retrieve(query_str, size=3):
 
 # Elasticsearch 설정
 es_username = "elastic"
-es_password = "0J*At8v7W2KsLVuzJWOU"
+es_password = os.getenv('ELASTIC_PASSWORD')
 es = Elasticsearch(['https://localhost:9200'], basic_auth=(es_username, es_password), ca_certs="./elasticsearch-8.8.0/config/certs/http_ca.crt")
 
 print(es.info())
@@ -277,7 +277,7 @@ ret = bulk_add("test", index_docs)
 print(ret)
 
 # OpenAI 설정
-os.environ["OPENAI_API_KEY"] = "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"
+os.environ["OPENAI_API_KEY"] = os.getenv('OPENAI_API_KEY')
 
 client = OpenAI()
 llm_model = "gpt-4o"

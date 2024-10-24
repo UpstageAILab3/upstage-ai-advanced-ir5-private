@@ -2,7 +2,7 @@ import openai
 import json
 
 # GPT API 키 설정
-client = openai.OpenAI(api_key='')
+client = openai.OpenAI(api_key= os.getenv('OPENAI_API_KEY'))
 
 def generate_related_document(content):
     # GPT API를 사용하여 관련 문서를 생성하기 위한 프롬프트 정의
