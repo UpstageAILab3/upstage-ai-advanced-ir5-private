@@ -8,6 +8,9 @@ from datetime import datetime
 load_dotenv()
 # Sentence Transformer 모델 초기화 (한국어 임베딩 생성 가능한 어떤 모델도 가능)
 model = SentenceTransformer("snunlp/KR-SBERT-V40K-klueNLI-augSTS")
+# model = SentenceTransformer('paraphrase-MiniLM-L6-v2')
+
+os.environ["TOKENIZERS_PARALLELISM"] = "false"
 
 
 # SetntenceTransformer를 이용하여 임베딩 생성
@@ -20,7 +23,7 @@ def get_embeddings_in_batches(docs, batch_size=100):
     batch_embeddings = []
     for i in range(0, len(docs), batch_size):
         batch = docs[i:i + batch_size]
-        contents = [doc["content"] for doc in batch]
+        contents = [doc["summary"] for doc in batch]
         embeddings = get_embedding(contents)
         batch_embeddings.extend(embeddings)
         print(f'batch {i}')
@@ -132,7 +135,7 @@ create_es_index("test", settings, mappings)
 
 # 문서의 content 필드에 대한 임베딩 생성
 index_docs = []
-with open("../../../new_data/new_data_20241018_114529.jsonl") as f:
+with open("../../../new_data/new_data_20241017_024005_klue.jsonl") as f:
     docs = [json.loads(line) for line in f]
 embeddings = get_embeddings_in_batches(docs)
                 
@@ -228,7 +231,7 @@ def answer_question(messages):
             model=llm_model,
             messages=msg,
             tools=tools,
-            #tool_choice={"type": "function", "function": {"name": "search"}},
+            tool_choice={"type": "function", "function": {"name": "search"}},
             temperature=0,
             seed=1,
             timeout=10
@@ -245,6 +248,7 @@ def answer_question(messages):
 
         # Baseline으로는 sparse_retrieve만 사용하여 검색 결과 추출
         search_result = sparse_retrieve(standalone_query, 3)
+        # search_result = sparse_retrieve(query_doc["content"], 3)
         # search_result = dense_retrieve(standalone_query, 3)
         
         response["standalone_query"] = standalone_query
@@ -305,7 +309,8 @@ def eval_rag(eval_filename, output_filename):
         idx = 0
         for line in f:
             j = json.loads(line)
-            print(f'Test {idx}\nQuestion: {j["msg"]}')
+            print(f'Test {idx}\nQuestion: {j["msg"][0]["content"]}')
+            msg = {"role": "user"}
             response = answer_question(j["msg"])
             print(f'Answer: {response["answer"]}\n')
 
@@ -315,5 +320,5 @@ def eval_rag(eval_filename, output_filename):
             idx += 1
 
 # 평가 데이터에 대해서 결과 생성 - 파일 포맷은 jsonl이지만 파일명은 csv 사용
-eval_rag(f"../../../data/eval.jsonl", f"../../../eval_data/벡터_{datetime.now()}_sample_submission.csv")
+eval_rag(f"../../../data/final.jsonl", f"../../../eval_data/역색인_klue_{datetime.now()}_sample_submission.csv")
 

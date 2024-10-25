@@ -34,14 +34,19 @@ _(이 부분은 이후 단계에서 구체적으로 추가)_
 - 'src': 데이터 출처를 나타내는 필드.  
 - 'content': RAG에서 참조할 수 있는 지식 정보가 포함된 필드.
 
-**EDA**: _(생략)_  
-**데이터 처리**:  eval.jsonl의 멀티턴 대화 싱글턴으로 교체.
+**EDA**: 
+- 'is_science_question': 과학질의인지 분류
+- 'document_msg' : 질문의 문서화
+
+**데이터 처리**: 
+- Hyde를 위하여 질문을 문서화하는 작업을 'document_msg' 키에 저장
+- 영어로 역번역하여 임베딩하는 경우 openai 임베딩 모델 사용
+- eval.jsonl의 멀티턴 대화 싱글턴으로 바꾸기
 
 ## 7. 각자 임무
-- **한지웅**: 과학질문 20개 선처리하기, Upstage embedding 모델 적용하기, Sparse/Dense 검색을 합친 Hybride Retrieval 구현하기, HYDE
-적용하기(query로부터 doc 생성하기), 멀티턴 대화 싱글턴으로 바꾸기, Rerank 시도하기
+- **한지웅**: 과학질문 20개 선처리하기, Upstage embedding 모델 적용하기, Sparse/Dense 검색을 합친 Hybride Retrieval 구현하기, HYDE 적용하기(query로부터 doc 생성하기), 멀티턴 대화 싱글턴으로 바꾸기, Rerank 시도하기
 
-- **홍진영**: (업무 내용 추가해주세요)
+- **홍진영**: 한글 문서를 klue 모델로 summarize, 문서를 영어로 역번역하여 Hyde, Rerank(Cross Encoder), Elastics Search에 영어 질문 및 문서 인덱싱 진행. 
 
 - **이승민**: 소프트 보팅 기법을 적용하여 다수의 모델에서 나온 예측을 결합해 최종 결과를 도출하는 작업을 맡고 있습니다. 이 과정에서 Solar API를 사용해 데이터를 처리하며, jhgan/ko-sroberta-nli와 jhgan/ko-sbert-nli 모델을 활용하여 문장 임베딩 및 문서 검색 성능을 향상시키고 있습니다. 이를 통해 다양한 모델의 강점을 결합하여 보다 정확한 답변을 생성할 수 있도록 기여하고 있습니다.
 """
