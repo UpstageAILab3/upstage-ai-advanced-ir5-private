@@ -43,7 +43,7 @@ _(이 부분은 이후 단계에서 구체적으로 추가)_
 - 영어로 역번역하여 임베딩하는 경우 openai 임베딩 모델 사용
 
 ## 7. 각자 임무
-- **한지웅**: (업무 내용 추가해주세요)
+- **한지웅**: 과학질문 20개 선처리하기, Upstage embedding 모델 적용하기, Sparse/Dense 검색을 합친 Hybride Retrieval 구현하기, HYDE 적용하기(query로부터 doc 생성하기), 멀티턴 대화 싱글턴으로 바꾸기, Rerank 시도하기
 
 - **홍진영**: 한글 문서를 klue 모델로 summarize, 문서를 영어로 역번역하여 Hyde, Rerank(Cross Encoder), Elastics Search에 영어 질문 및 문서 인덱싱 진행. 
 
